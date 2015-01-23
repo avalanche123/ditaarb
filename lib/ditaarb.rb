@@ -1,4 +1,6 @@
 require 'tempfile'
+require 'tmpdir'
+require 'digest'
 
 module Ditaa
   # @param ascii_art [String] original ascii diagram to render as image.
@@ -18,28 +20,67 @@ module Ditaa
   #   advisable to use tabs in your diagrams.
   # @return [String] processed image
   def self.render(ascii_art, options = {})
-    ditaa_jar  = File.expand_path(File.dirname(__FILE__) + '/../vendor/ditaa0_9.jar')
-    ditaa_jar << ' -A' if options[:antialiasing]
-    ditaa_jar << ' -d' if options[:debug]
-    ditaa_jar << ' -E' if options[:separation] == false
-    ditaa_jar << ' -r' if options[:rounded_corneres]
-    ditaa_jar << " -s #{options[:scale]}" if options[:scale]
-    ditaa_jar << ' -S' if options[:shadows] == false
-    ditaa_jar << ' -t' if options[:tabs]
+    filename = File.join(Dir.tmpdir, 'ditaarb-' + Digest::MD5.hexdigest(ascii_art) + '.tmp')
 
-    input_file = Tempfile.new('ditaa.input')
-    input_file.write(ascii_art)
-    input_file.flush
+    return File.read(filename) if File.exists?(filename)
 
-    output_file = Tempfile.new('ditaa.output')
+    begin
+      input_file = Tempfile.new('ditaa.input')
+      input_file.write(ascii_art)
+      input_file.flush
 
-    pid = Process.spawn("java -jar #{ditaa_jar} -v #{input_file.path} #{output_file.path}", [:err, :out] => '/dev/null')
-    Process.wait(pid)
-    File.read(output_file.path)
-  ensure
-    input_file.close!
-    output_file.close!
+      args  = ['java', '-jar']
+      args << File.expand_path(__FILE__ + '/../../vendor/ditaa0_9.jar')
+      args << '-A' if options[:antialiasing]
+      args << '-d' if options[:debug]
+      args << '-E' if options[:separation] == false
+      args << '-r' if options[:rounded_corneres]
+      args << '-s' << options[:scale] if options[:scale]
+      args << '-S' if options[:shadows] == false
+      args << '-t' if options[:tabs]
+      args << '-v'
+      args << input_file.path
+      args << filename
+      args << { [:err, :out] => '/dev/null' }
+
+      system(*args)
+    ensure
+      input_file.close!
+    end
+
+    File.read(filename)
   end
 end
 
 require 'ditaarb/version'
+
+File.open('diagram.png', 'w+') do |f|
+  f.write Ditaa.render(<<-ASCII)
+                                  /-------+
+                                  |Cluster|<----------------------------------+
+                                  +-------/                                   |
+                                      ^                                       |
+                                      |                                       |
+            +-------------------------+-------------------------+             |
+            :                         :                         :             |
+        /---+---+                 /---+---+                 /---+---+         |
+        |Session|                 |Session|                 |Session|         |
+        +-------/                 +-------/                 +-------/         |
+            ^                         ^                         ^             |
+            |                         |                         |             |
+     +------+-----+            +------+-----+            +------+-----+       |
+     :            :            :            :            :            :       |
+/----+-----+ /----+-----+ /----+-----+ /----+-----+ /----+-----+ /----+-----+ |
+|Connection| |Connection| |Connection| |Connection| |Connection| |Connection| |
++----+-----/ +----+-----/ +----+-----/ +----+-----/ +----+-----/ +----+-----/ |
+     :            :            :            :            :            :       |
+     +------------+-=----------+------+-----+-=----------+------------+       |
+                                      |                                       |
+                                      v                                       |
+                                /----------+                                  |
+                                |IO Reactor|                                  |
+                                +-----+----/                                  |
+                                      :                                       |
+                                      +---------------------------------------+
+ASCII
+end
