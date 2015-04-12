@@ -29,7 +29,7 @@ module Ditaa
       input_file.write(ascii_art)
       input_file.flush
 
-      args  = ['java', '-jar']
+      args  = ['java', '-Djava.awt.headless=true', '-jar']
       args << File.expand_path(__FILE__ + '/../../vendor/ditaa0_9.jar')
       args << '-A' if options[:antialiasing]
       args << '-d' if options[:debug]
